@@ -1,18 +1,19 @@
-require 'rubygems'
 require 'yaml'
 
 class Hiera
-  VERSION = "0.3.0"
-
-  autoload :Config, "hiera/config"
-  autoload :Backend, "hiera/backend"
-  autoload :Console_logger, "hiera/console_logger"
-  autoload :Puppet_logger, "hiera/puppet_logger"
+  require "hiera/error"
+  require "hiera/version"
+  require "hiera/config"
+  require "hiera/util"
+  require "hiera/backend"
+  require "hiera/console_logger"
+  require "hiera/puppet_logger"
+  require "hiera/noop_logger"
+  require "hiera/fallback_logger"
+  require "hiera/filecache"
 
   class << self
-    def version
-      VERSION
-    end
+    attr_reader :logger
 
     # Loggers are pluggable, just provide a class called
     # Hiera::Foo_logger and respond to :warn and :debug
@@ -20,13 +21,13 @@ class Hiera
     # See hiera-puppet for an example that uses the Puppet
     # loging system instead of our own
     def logger=(logger)
-      loggerclass = "#{logger.capitalize}_logger"
+      require "hiera/#{logger}_logger"
 
-      require "hiera/#{logger}_logger" unless constants.include?(loggerclass)
-
-      @logger = const_get(loggerclass)
+      @logger = Hiera::FallbackLogger.new(
+        Hiera.const_get("#{logger.capitalize}_logger"),
+        Hiera::Console_logger)
     rescue Exception => e
-      @logger = Console_logger
+      @logger = Hiera::Console_logger
       warn("Failed to load #{logger} logger: #{e.class}: #{e}")
     end
 
@@ -39,7 +40,7 @@ class Hiera
   # If the config option is a string its assumed to be a filename,
   # else a hash of what would have been in the YAML config file
   def initialize(options={})
-    options[:config] ||= "/etc/hiera.yaml"
+    options[:config] ||= File.join(Util.config_dir, 'hiera.yaml')
 
     @config = Config.load(options[:config])
 
@@ -59,3 +60,4 @@ class Hiera
     Backend.lookup(key, default, scope, order_override, resolution_type)
   end
 end
+

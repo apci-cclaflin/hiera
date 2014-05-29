@@ -3,17 +3,24 @@ require 'spec_helper'
 class Hiera
   describe Config do
     describe "#load" do
-      it "should treat string sources as a filename" do
-        expect {
-            Config.load("/nonexisting")
-        }.to raise_error("Config file /nonexisting not found")
+      let(:default_config) do
+        {
+          :backends  => ["yaml"],
+          :hierarchy => "common",
+          :logger    => "console",
+          :merge_behavior=>:native
+        }
       end
 
-      it "should raise error for missing config files" do
+      it "should treat string sources as a filename" do
+        expect { Config.load("/nonexisting") }.to raise_error
+      end
+
+      it "should raise an error for missing config files" do
         File.expects(:exist?).with("/nonexisting").returns(false)
         YAML.expects(:load_file).with("/nonexisting").never
 
-        expect { Config.load("/nonexisting") }.should raise_error RuntimeError, /not found/
+        expect { Config.load("/nonexisting") }.to raise_error "Config file /nonexisting not found"
       end
 
       it "should attempt to YAML load config files" do
@@ -27,7 +34,7 @@ class Hiera
         File.expects(:exist?).with("/nonexisting").returns(true)
         YAML.expects(:load_file).with("/nonexisting").returns(YAML.load(""))
 
-        Config.load("/nonexisting").should == {:backends => ["yaml"], :hierarchy => "common", :logger => "console"}
+        Config.load("/nonexisting").should == default_config
       end
 
       it "should use hash data as source if supplied" do
@@ -37,11 +44,11 @@ class Hiera
 
       it "should merge defaults with the loaded or supplied config" do
         config = Config.load({})
-        config.should == {:backends => ["yaml"], :hierarchy => "common", :logger => "console"}
+        config.should == {:backends => ["yaml"], :hierarchy => "common", :logger => "console", :merge_behavior=>:native}
       end
 
       it "should force :backends to be a flattened array" do
-        Config.load({:backends => [["foo", ["bar"]]]}).should == {:backends => ["foo", "bar"], :hierarchy => "common", :logger => "console"}
+        Config.load({:backends => [["foo", ["bar"]]]}).should == {:backends => ["foo", "bar"], :hierarchy => "common", :logger => "console", :merge_behavior=>:native}
       end
 
       it "should load the supplied logger" do
@@ -52,6 +59,18 @@ class Hiera
       it "should default to the console logger" do
         Hiera.expects(:logger=).with("console")
         Config.load({})
+      end
+
+      context "loading '/dev/null' as spec tests do", :unless => Hiera::Util.microsoft_windows? do
+        before :each do
+          # Simulate the behavior of YAML.load_file('/dev/null') in MRI 1.9.3p194
+          Config.stubs(:yaml_load_file).
+            raises(TypeError, "no implicit conversion from nil to integer")
+        end
+
+        it "is not exceptional behavior" do
+          Config.load('/dev/null')
+        end
       end
     end
 

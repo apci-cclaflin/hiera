@@ -1,9 +1,10 @@
 class Hiera
   module Backend
-    class Yaml_backend
+    class Json_backend
       def initialize(cache=nil)
-        require 'yaml'
-        Hiera.debug("Hiera YAML backend starting")
+        require 'json'
+
+        Hiera.debug("Hiera JSON backend starting")
 
         @cache = cache || Filecache.new
       end
@@ -11,21 +12,21 @@ class Hiera
       def lookup(key, scope, order_override, resolution_type)
         answer = nil
 
-        Hiera.debug("Looking up #{key} in YAML backend")
+        Hiera.debug("Looking up #{key} in JSON backend")
 
-        Backend.datasourcefiles(:yaml, scope, "yaml", order_override) do |source, yamlfile|
-          data = @cache.read_file(yamlfile, Hash) do |data|
-            YAML.load(data) || {}
+        Backend.datasources(scope, order_override) do |source|
+          Hiera.debug("Looking for data source #{source}")
+
+          jsonfile = Backend.datafile(:json, scope, source, "json") || next
+
+          next unless File.exist?(jsonfile)
+
+          data = @cache.read_file(jsonfile, Hash) do |data|
+            JSON.parse(data)
           end
 
           next if data.empty?
           next unless data.include?(key)
-
-          # Extra logging that we found the key. This can be outputted
-          # multiple times if the resolution type is array or hash but that
-          # should be expected as the logging will then tell the user ALL the
-          # places where the key is found.
-          Hiera.debug("Found #{key} in #{source}")
 
           # for array resolution we just append to the array whatever
           # we find, we then goes onto the next file and keep adding to
@@ -49,12 +50,6 @@ class Hiera
         end
 
         return answer
-      end
-
-      private
-
-      def file_exists?(path)
-        File.exist? path
       end
     end
   end
